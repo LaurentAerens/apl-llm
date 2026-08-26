@@ -1,0 +1,68 @@
+{
+  "name": "apl-intellisense-slm",
+  "displayName": "APL IntelliSense SLM",
+  "description": "Ultra-lightweight local Small Language Model (SLM) inline autocomplete and IntelliSense for APL using PyTorch and KV caching",
+  "version": "0.1.0",
+  "publisher": "LaurentAerens",
+  "icon": "media/icon.png",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LaurentAerens/apl-llm"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "keywords": [
+    "apl",
+    "dyalog",
+    "slm",
+    "intellisense",
+    "autocomplete",
+    "copilot",
+    "code-completion",
+    "array-programming",
+    "transformer",
+    "pytorch"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:apl",
+    "onLanguage:dyalog"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "apl-slm.restartDaemon",
+        "title": "APL IntelliSense SLM: Restart Daemon"
+      }
+    ],
+    "configuration": {
+      "title": "APL IntelliSense SLM",
+      "properties": {
+        "apl-slm.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter with PyTorch installed."
+        },
+        "apl-slm.modelPath": {
+          "type": "string",
+          "default": "checkpoints/apl_slm_best.pt",
+          "description": "Path or filename of the model checkpoint (.pt)."
+        },
+        "apl-slm.maxTokens": {
+          "type": "integer",
+          "default": 128,
+          "minimum": 8,
+          "maximum": 512,
+          "description": "Maximum number of autocompleted tokens to generate per completion request."
+        }
+      }
+    }
+  }
+}

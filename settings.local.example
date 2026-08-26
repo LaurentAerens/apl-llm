@@ -1,0 +1,2 @@
+# GitHub API Token to bypass rate limits when scraping APL repositories
+GITHUB_TOKEN=your_personal_access_token_here

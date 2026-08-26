@@ -1,0 +1,37 @@
+# Local settings and secrets
+settings.local
+.env
+*.log
+
+# Training data corpus and caches (preserve .gitkeep and markdown attribution)
+data/*
+!data/*.md
+!data/.gitkeep
+
+# Model checkpoints (preserve .gitkeep)
+checkpoints/*
+!checkpoints/.gitkeep
+older-models/
+*.pt
+*.pth
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+
+# VS Code / Node / extension build artifacts
+.vscode/
+extension/out/
+extension/node_modules/
+extension/.vscode-test/
+extension/checkpoints/
+node_modules/
+*.vsix
+
+# OS artifacts
+.DS_Store
+Thumbs.db
