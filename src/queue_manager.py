@@ -149,7 +149,12 @@ class TrainingQueueManager:
         try:
             with open(self.queue_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                raw_jobs = data.get("jobs", [])
+                if isinstance(data, dict):
+                    raw_jobs = data.get("jobs", [])
+                elif isinstance(data, list):
+                    raw_jobs = data
+                else:
+                    raw_jobs = []
                 self.jobs = [TrainingJob.from_dict(j) for j in raw_jobs]
         except Exception as e:
             print(f"[!] Warning: Failed to load queue from {self.queue_path}: {e}")
