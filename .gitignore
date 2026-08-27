@@ -2,6 +2,7 @@
 settings.local
 .env
 *.log
+training_queue.json
 
 # Training data corpus and caches (preserve .gitkeep and markdown attribution)
 data/*
