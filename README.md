@@ -23,7 +23,7 @@ For complete architectural details, formulas, and comparison matrices, see [ARCH
 * **Unicode APL Character Tokenizer:** Full support for standard ISO / Dyalog APL glyphs (⍳, ⍴, ⌽, ⍉, ⍋, ⍒, ⍺, ⍵, ∇, ⋄, ←, etc.) across ~170 tokens.
 * **Structural Depth Conditioning:** Tracks nesting depth of parentheses `()`, brackets `[]`, and dfns `{}` for syntax-aware balanced code generation.
 * **KV-Cached Generation:** Single-token autoregressive decoding ($\mathcal{O}(1)$ step projection time) running in sub-millisecond speeds on local CPU.
-* **Open Source Dataset Scraper:** Scrapes GitHub APL repositories under verified permissive open-source licenses and auto-generates `data/ATTRIBUTION.md`.
+* **Open Source Dataset Scraper:** Scrapes GitHub and GitLab APL repositories under verified permissive open-source licenses and auto-generates `data/ATTRIBUTION.md`.
 * **VS Code Integration:** Includes the companion `extension/` package (**apl-intellisense-slm**) providing inline ghost text completions.
 
 ---
@@ -51,10 +51,11 @@ py -3 src/gui.py
 ---
 
 ### 1. Collect Dataset & Generate License Attribution
-Scrape open-source APL repositories from GitHub and augment with synthetic algorithmic idioms and dfns:
+Scrape open-source APL repositories from GitHub and GitLab and augment with synthetic algorithmic idioms and dfns:
 
 ```bash
-py -3 src/dataset_collector.py --mode search --limit 50
+# Scrape GitHub + GitLab and generate synthetic idioms
+py -3 src/dataset_collector.py --mode search --limit 50 --sources github gitlab synthetic
 ```
 
 *Place your GitHub token in `settings.local` or pass `--token <PAT>` to bypass rate limits.*

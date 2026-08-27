@@ -1,5 +1,11 @@
+"""
+Architecture Version 3: Modern High-Performance Transformer for APL.
+Built with Pre-RMSNorm, SwiGLU, Rotary Position Embeddings (RoPE), QK-Norm, and single-token KV caching.
+"""
+
 import math
-import warnings
+import sys
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 
@@ -7,24 +13,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-warnings.filterwarnings("ignore", message=".*flash attention.*")
-warnings.filterwarnings("ignore", message=".*scaled_dot_product_attention.*")
+src_dir = str(Path(__file__).resolve().parent.parent)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
+from config import APL_SLMConfig_v3, APLModelConfig
 
-@dataclass
-class APL_SLMConfig_v3:
-    vocab_size: int = 256
-    max_seq_len: int = 1024
-    n_layer: int = 4
-    n_head: int = 4
-    n_embd: int = 64
-    max_depth: int = 32
-    dropout: float = 0.0
-    version: int = 3
-    use_depth_node: bool = True
-    use_rope: bool = True
-    use_swiglu: bool = True
-    use_qk_norm: bool = True
+# Backward compatibility alias
+APL_SLMConfig = APL_SLMConfig_v3
 
 
 class RMSNorm(nn.Module):
@@ -57,7 +53,9 @@ class SwiGLU(nn.Module):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
-def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def apply_rotary_pos_emb(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
     d = q.shape[-1]
     q1, q2 = q[..., : d // 2], q[..., d // 2 :]
     k1, k2 = k[..., : d // 2], k[..., d // 2 :]
@@ -71,6 +69,8 @@ def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, si
 
 
 class RotaryEmbedding(nn.Module):
+    """Rotary Position Embedding (RoPE)."""
+
     def __init__(self, dim: int, max_seq_len: int = 2048, base: float = 10000.0):
         super().__init__()
         self.dim = dim
@@ -84,7 +84,7 @@ class RotaryEmbedding(nn.Module):
         self.register_buffer("cos_cached", emb.cos()[None, None, :, :], persistent=False)
         self.register_buffer("sin_cached", emb.sin()[None, None, :, :], persistent=False)
 
-    def forward(self, seq_len: int, offset: int = 0):
+    def forward(self, seq_len: int, offset: int = 0) -> Tuple[torch.Tensor, torch.Tensor]:
         return (
             self.cos_cached[:, :, offset : offset + seq_len, :],
             self.sin_cached[:, :, offset : offset + seq_len, :],
@@ -94,7 +94,7 @@ class RotaryEmbedding(nn.Module):
 class CausalSelfAttention_v3(nn.Module):
     def __init__(self, config: APL_SLMConfig_v3):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.n_embd % config.n_head == 0, f"n_embd ({config.n_embd}) must be divisible by n_head ({config.n_head})"
         self.config = config
         self.n_head = config.n_head
         self.head_dim = config.n_embd // config.n_head
@@ -227,4 +227,3 @@ class APL_SLM_v3(nn.Module):
         depth_logits = self.depth_head(x)
 
         return logits, depth_logits, new_caches
-

@@ -357,7 +357,7 @@ class APL_SLM_GUI:
 
         desc = tk.Label(
             frame,
-            text="Collects open-source APL repositories from GitHub under verified permissive licenses, generates ATTRIBUTION.md, and augments with synthetic algorithmic idioms and dfns.",
+            text="Collects open-source APL repositories from GitHub and GitLab under verified permissive licenses, generates ATTRIBUTION.md, and augments with synthetic algorithmic idioms and dfns.",
             font=("Segoe UI", 10),
             bg=self.colors["bg_dark"],
             fg=self.colors["text_muted"],
@@ -369,22 +369,36 @@ class APL_SLM_GUI:
         card = tk.Frame(frame, bg=self.colors["bg_card"], bd=0, padx=16, pady=16)
         card.pack(fill=tk.X, pady=(0, 15))
 
+        # Data Sources Checkboxes
+        tk.Label(card, text="Data Sources:", font=("Segoe UI", 10, "bold"), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=0, column=0, sticky="w", pady=6)
+
+        sources_frame = tk.Frame(card, bg=self.colors["bg_card"])
+        sources_frame.grid(row=0, column=1, sticky="w", padx=10, pady=6)
+
+        self.src_github_var = tk.BooleanVar(value=True)
+        self.src_gitlab_var = tk.BooleanVar(value=True)
+        self.src_synthetic_var = tk.BooleanVar(value=True)
+
+        ttk.Checkbutton(sources_frame, text="GitHub", variable=self.src_github_var).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(sources_frame, text="GitLab", variable=self.src_gitlab_var).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(sources_frame, text="Synthetic Idioms", variable=self.src_synthetic_var).pack(side=tk.LEFT)
+
         # Mode Selector
-        tk.Label(card, text="Collection Mode:", font=("Segoe UI", 10, "bold"), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=0, column=0, sticky="w", pady=6)
+        tk.Label(card, text="Collection Mode:", font=("Segoe UI", 10), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=1, column=0, sticky="w", pady=6)
         self.ds_mode = ttk.Combobox(card, values=["curated", "search", "all"], width=15, state="readonly")
         self.ds_mode.current(0)
-        self.ds_mode.grid(row=0, column=1, sticky="w", padx=10, pady=6)
+        self.ds_mode.grid(row=1, column=1, sticky="w", padx=10, pady=6)
 
         # Limit
-        tk.Label(card, text="Max Repos to Scan (0 for All):", font=("Segoe UI", 10), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=1, column=0, sticky="w", pady=6)
+        tk.Label(card, text="Max Repos to Scan (0 for All):", font=("Segoe UI", 10), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=2, column=0, sticky="w", pady=6)
         self.ds_limit = tk.Entry(card, bg=self.colors["bg_dark"], fg=self.colors["text"], insertbackground=self.colors["text"], bd=0, width=10)
         self.ds_limit.insert(0, "50")
-        self.ds_limit.grid(row=1, column=1, sticky="w", padx=10, pady=6)
+        self.ds_limit.grid(row=2, column=1, sticky="w", padx=10, pady=6)
 
         # Github Token (PAT)
-        tk.Label(card, text="GitHub Personal Access Token (Optional):", font=("Segoe UI", 10), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=2, column=0, sticky="w", pady=6)
+        tk.Label(card, text="GitHub Personal Access Token (Optional):", font=("Segoe UI", 10), bg=self.colors["bg_card"], fg=self.colors["text"]).grid(row=3, column=0, sticky="w", pady=6)
         self.ds_token = tk.Entry(card, bg=self.colors["bg_dark"], fg=self.colors["text"], insertbackground=self.colors["text"], bd=0, width=35, show="*")
-        self.ds_token.grid(row=2, column=1, sticky="w", padx=10, pady=6)
+        self.ds_token.grid(row=3, column=1, sticky="w", padx=10, pady=6)
 
         # Run Controls
         btn_frame = tk.Frame(frame, bg=self.colors["bg_dark"])
@@ -392,7 +406,7 @@ class APL_SLM_GUI:
 
         self.btn_run_ds = tk.Button(
             btn_frame,
-            text="🍏 Build Dataset (Scrape GitHub)",
+            text="🍏 Build Dataset (GitHub + GitLab)",
             font=("Segoe UI", 10, "bold"),
             bg=self.colors["accent"],
             fg=self.colors["bg_dark"],
@@ -1882,6 +1896,18 @@ class APL_SLM_GUI:
         token = self.ds_token.get().strip()
         if token:
             cmd += ["--token", token]
+
+        selected_sources = []
+        if hasattr(self, "src_github_var") and self.src_github_var.get():
+            selected_sources.append("github")
+        if hasattr(self, "src_gitlab_var") and self.src_gitlab_var.get():
+            selected_sources.append("gitlab")
+        if hasattr(self, "src_synthetic_var") and self.src_synthetic_var.get():
+            selected_sources.append("synthetic")
+
+        if selected_sources:
+            cmd += ["--sources"] + selected_sources
+
         self.execute_command(cmd)
 
     def run_synthetic_dataset_generation(self):

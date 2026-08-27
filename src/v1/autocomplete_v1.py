@@ -1,37 +1,27 @@
-import argparse
+"""
+Architecture Version 1 Autocomplete Wrapper.
+Provides load_model_v1 and autocomplete_v1 delegating to the unified APLGenerator.
+"""
+
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple, Optional
 import torch
-import torch.nn.functional as F
 
 src_dir = str(Path(__file__).resolve().parent.parent)
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 from tokenizer import APLTokenizer
+from generator import APLGenerator
 from v1.model_v1 import APL_SLM_v1, APL_SLMConfig_v1
 
 
-def load_model_v1(checkpoint_path: str = "checkpoints/apl_slm_best.pt", device_str: str = None) -> Tuple[APL_SLM_v1, APLTokenizer, torch.device]:
+def load_model_v1(checkpoint_path: str = "checkpoints/apl_slm_best.pt", device_str: Optional[str] = None):
     device = torch.device(device_str if device_str else ("cuda" if torch.cuda.is_available() else "cpu"))
     path = Path(checkpoint_path)
-
-    if not path.exists():
-        path = Path("checkpoints/baseline/apl_slm_best.pt")
-        if not path.exists():
-            candidates = list(Path("checkpoints").glob("**/*.pt"))
-            if candidates:
-                best_candidates = [c for c in candidates if "best" in c.name]
-                path = best_candidates[0] if best_candidates else candidates[0]
-            else:
-                raise FileNotFoundError(f"No checkpoint found at {checkpoint_path} or in checkpoints/")
-
     tokenizer_path = path.parent / "tokenizer.json"
-    if tokenizer_path.exists():
-        tokenizer = APLTokenizer.load(tokenizer_path)
-    else:
-        tokenizer = APLTokenizer()
+    tokenizer = APLTokenizer.load(tokenizer_path) if tokenizer_path.exists() else APLTokenizer()
 
     checkpoint = torch.load(path, map_location=device, weights_only=False)
     config = checkpoint.get("config")
@@ -46,112 +36,37 @@ def load_model_v1(checkpoint_path: str = "checkpoints/apl_slm_best.pt", device_s
             dropout=0.0,
             version=1,
         )
-
     model = APL_SLM_v1(config).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    model.load_state_dict(checkpoint.get("model_state_dict", checkpoint), strict=False)
     model.eval()
-
     return model, tokenizer, device
 
 
 def autocomplete_v1(
-    model: APL_SLM_v1,
+    model: torch.nn.Module,
     tokenizer: APLTokenizer,
     device: torch.device,
     prompt: str,
     max_new_tokens: int = 64,
     temperature: float = 0.7,
     top_k: int = 5,
+    top_p: float = 0.9,
     use_kv_cache: bool = True,
     guard_syntax: bool = True,
-    verbose: bool = True,
+    stop_on_balanced_newline: bool = True,
+    verbose: bool = False,
 ) -> str:
-    prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
-    if not prompt_ids:
-        prompt_ids = [tokenizer.bos_id]
-
-    idx = torch.tensor([prompt_ids], dtype=torch.long, device=device)
-
-    if verbose:
-        print(f"\n[+] Prompt: {repr(prompt)}")
-        print("[+] Autocomplete v1: ", end="", flush=True)
-
-    with torch.no_grad():
-        if use_kv_cache:
-            logits, _, kv_caches = model(idx, use_cache=True)
-            generated_ids = []
-
-            for _ in range(max_new_tokens):
-                next_token_logits = logits[:, -1, :]
-                if temperature > 0:
-                    scaled_logits = next_token_logits / max(temperature, 1e-5)
-                    if top_k > 0:
-                        v, _ = torch.topk(scaled_logits, min(top_k, scaled_logits.size(-1)))
-                        scaled_logits[scaled_logits < v[:, [-1]]] = -float("inf")
-                    probs = F.softmax(scaled_logits, dim=-1)
-                    next_token = torch.multinomial(probs, num_samples=1).item()
-                else:
-                    next_token = torch.argmax(next_token_logits, dim=-1).item()
-
-                if next_token in (tokenizer.eos_id, tokenizer.pad_id):
-                    break
-
-                generated_ids.append(next_token)
-                if verbose:
-                    token_str = tokenizer.decode([next_token], skip_special_tokens=True)
-                    print(token_str, end="", flush=True)
-
-                next_tensor = torch.tensor([[next_token]], dtype=torch.long, device=device)
-                logits, _, kv_caches = model(next_tensor, kv_caches=kv_caches, use_cache=True)
-
-            if verbose:
-                print()
-            return prompt + tokenizer.decode(generated_ids, skip_special_tokens=True)
-        else:
-            curr_idx = idx
-            generated_ids = []
-            for _ in range(max_new_tokens):
-                logits, _, _ = model(curr_idx)
-                next_token_logits = logits[:, -1, :]
-                if temperature > 0:
-                    scaled_logits = next_token_logits / max(temperature, 1e-5)
-                    if top_k > 0:
-                        v, _ = torch.topk(scaled_logits, min(top_k, scaled_logits.size(-1)))
-                        scaled_logits[scaled_logits < v[:, [-1]]] = -float("inf")
-                    probs = F.softmax(scaled_logits, dim=-1)
-                    next_token = torch.multinomial(probs, num_samples=1).item()
-                else:
-                    next_token = torch.argmax(next_token_logits, dim=-1).item()
-
-                if next_token in (tokenizer.eos_id, tokenizer.pad_id):
-                    break
-
-                generated_ids.append(next_token)
-                curr_idx = torch.cat([curr_idx, torch.tensor([[next_token]], dtype=torch.long, device=device)], dim=1)
-
-            return prompt + tokenizer.decode(generated_ids, skip_special_tokens=True)
-
-
-def main():
-    sys.stdout.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(description="APL SLM v1 Autocomplete")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/Small-v1/apl_slm_best.pt")
-    parser.add_argument("--prompt", type=str, default="{+/⍵")
-    parser.add_argument("--max_tokens", type=int, default=64)
-    parser.add_argument("--temperature", type=float, default=0.7)
-    parser.add_argument("--top_k", type=int, default=5)
-    args = parser.parse_args()
-
-    model, tokenizer, device = load_model_v1(args.checkpoint)
-    completed = autocomplete_v1(
-        model, tokenizer, device, args.prompt,
-        max_new_tokens=args.max_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
+    return APLGenerator.generate(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        prompt=prompt,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        use_kv_cache=use_kv_cache,
+        guard_syntax=guard_syntax,
+        stop_on_balanced_newline=stop_on_balanced_newline,
+        verbose=verbose,
     )
-    print(f"\n[Result]:\n{completed}")
-
-
-if __name__ == "__main__":
-    main()
-

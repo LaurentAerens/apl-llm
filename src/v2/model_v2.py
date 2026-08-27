@@ -1,5 +1,11 @@
+"""
+Architecture Version 2: Structural Depth Conditioned Transformer for APL.
+Conditioned on running parenthesis, bracket, and dfn depth with an auxiliary depth prediction head.
+"""
+
 import math
-import warnings
+import sys
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 
@@ -7,30 +13,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-warnings.filterwarnings("ignore", message=".*flash attention.*")
-warnings.filterwarnings("ignore", message=".*scaled_dot_product_attention.*")
+src_dir = str(Path(__file__).resolve().parent.parent)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
+from config import APL_SLMConfig_v2, APLModelConfig
 
-@dataclass
-class APL_SLMConfig_v2:
-    vocab_size: int = 256
-    max_seq_len: int = 1024
-    n_layer: int = 4
-    n_head: int = 4
-    n_embd: int = 64
-    max_depth: int = 32
-    dropout: float = 0.0
-    version: int = 2
-    use_depth_node: bool = True
-
-
+# Backward compatibility alias
 APL_SLMConfig = APL_SLMConfig_v2
 
 
 class CausalSelfAttention_v2(nn.Module):
     def __init__(self, config: APL_SLMConfig_v2):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.n_embd % config.n_head == 0, f"n_embd ({config.n_embd}) must be divisible by n_head ({config.n_head})"
         self.config = config
         self.n_head = config.n_head
         self.n_embd = config.n_embd
@@ -185,7 +181,7 @@ class APL_SLM_v2(nn.Module):
         pos_emb = self.transformer.wpe(pos)
         x = tok_emb + pos_emb
 
-        if self.config.use_depth_node and depth_ids is not None:
+        if self.config.use_depth_node and depth_ids is not None and self.transformer.wde is not None:
             clamped_depth = torch.clamp(depth_ids, 0, self.config.max_depth - 1)
             x = x + self.transformer.wde(clamped_depth)
 
@@ -203,4 +199,3 @@ class APL_SLM_v2(nn.Module):
         depth_logits = self.depth_head(x)
 
         return logits, depth_logits, new_caches
-

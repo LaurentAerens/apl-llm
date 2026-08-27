@@ -1,16 +1,16 @@
 """
 Training Queue Manager for APL SLM.
-Manages persistent training jobs in `training_queue.json`.
-Supports adding, removing, reordering, prioritizing, and updating scheduled training jobs.
+Manages persistent training jobs in `training_queue.json` with atomic file operations.
+Supports scheduling, prioritizing, reordering, and updating batch training experiments.
 """
 
 import os
 import json
 import time
 import uuid
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-
 
 DEFAULT_QUEUE_PATH = "training_queue.json"
 
@@ -134,7 +134,7 @@ class TrainingJob:
 
 
 class TrainingQueueManager:
-    """Handles loading, saving, and mutating the training queue."""
+    """Handles loading, atomic saving, and mutating the training queue."""
 
     def __init__(self, queue_path: str = DEFAULT_QUEUE_PATH):
         self.queue_path = Path(queue_path)
@@ -162,10 +162,13 @@ class TrainingQueueManager:
         return self.jobs
 
     def save(self) -> None:
+        """Atomically saves jobs to JSON using a temporary file to prevent corruption."""
         try:
             self.queue_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.queue_path, "w", encoding="utf-8") as f:
+            temp_file = self.queue_path.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump({"jobs": [j.to_dict() for j in self.jobs]}, f, indent=2)
+            os.replace(temp_file, self.queue_path)
         except Exception as e:
             print(f"[!] Warning: Failed to save queue to {self.queue_path}: {e}")
 

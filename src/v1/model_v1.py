@@ -1,5 +1,11 @@
+"""
+Architecture Version 1: Baseline Causal Transformer for APL.
+Standard autoregressive sequence modeling with Post-LayerNorm, GELU, and learned positional embeddings.
+"""
+
 import math
-import warnings
+import sys
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 
@@ -7,25 +13,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-warnings.filterwarnings("ignore", message=".*flash attention.*")
-warnings.filterwarnings("ignore", message=".*scaled_dot_product_attention.*")
+src_dir = str(Path(__file__).resolve().parent.parent)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
+from config import APL_SLMConfig_v1, APLModelConfig
 
-@dataclass
-class APL_SLMConfig_v1:
-    vocab_size: int = 256
-    max_seq_len: int = 1024
-    n_layer: int = 4
-    n_head: int = 4
-    n_embd: int = 64
-    dropout: float = 0.0
-    version: int = 1
+# Backward compatibility alias
+APL_SLMConfig = APL_SLMConfig_v1
 
 
 class CausalSelfAttention_v1(nn.Module):
     def __init__(self, config: APL_SLMConfig_v1):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.n_embd % config.n_head == 0, f"n_embd ({config.n_embd}) must be divisible by n_head ({config.n_head})"
         self.config = config
         self.n_head = config.n_head
         self.n_embd = config.n_embd
@@ -189,4 +190,3 @@ class APL_SLM_v1(nn.Module):
         logits = self.lm_head(x)
 
         return logits, None, new_caches
-

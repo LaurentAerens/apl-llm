@@ -1,6 +1,12 @@
+"""
+APL Model Benchmark Suite.
+Evaluates functional accuracy, syntax balancing, and generation speed across model checkpoints.
+"""
+
 import os
 import sys
 import json
+import time
 import argparse
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
@@ -15,7 +21,6 @@ if src_dir not in sys.path:
 
 from autocomplete import load_model, autocomplete
 from tokenizer import APLTokenizer
-
 
 BENCHMARK_PROMPTS = [
     # Category 1: Statistics & Aggregations
@@ -57,13 +62,8 @@ BENCHMARK_PROMPTS = [
 
 
 def evaluate_balance(code: str, tokenizer: APLTokenizer) -> bool:
-    tokens = tokenizer.encode(code)
-    depths = tokenizer.compute_depth_sequences(tokens)
-    final_depth = depths[-1] if depths else 0
-    info = tokenizer.get_token_info(tokens[-1]) if tokens else None
-    if info:
-        final_depth = max(0, final_depth + info.paren_delta + info.bracket_delta + info.dfn_delta)
-    return final_depth == 0
+    """Uses the tokenizer's underflow-aware structural balance verification."""
+    return tokenizer.is_balanced(code)
 
 
 def get_checkpoint_val_loss(checkpoint_path: Path) -> float:
@@ -107,6 +107,7 @@ def benchmark_single_checkpoint(checkpoint_path: str, verbose: bool = True) -> D
             "val_loss": float("inf"),
             "params": 0,
             "version": "?",
+            "tokens_per_sec": 0.0,
         }
 
     model, tokenizer, device = load_model(checkpoint_path)
@@ -122,6 +123,8 @@ def benchmark_single_checkpoint(checkpoint_path: str, verbose: bool = True) -> D
 
     passed = 0
     balanced_count = 0
+    total_generated_tokens = 0
+    start_bench_time = time.time()
 
     for idx, test in enumerate(BENCHMARK_PROMPTS, 1):
         prompt = test["prompt"]
@@ -135,7 +138,8 @@ def benchmark_single_checkpoint(checkpoint_path: str, verbose: bool = True) -> D
             top_k=5,
             verbose=False,
         )
-        completion = full_code[len(prompt):] if full_code.startswith(prompt) else full_code
+        completion = full_code[len(prompt) :] if full_code.startswith(prompt) else full_code
+        total_generated_tokens += len(tokenizer.encode(completion))
 
         contains_expected = all(token in completion for token in test["expected_contain"])
         is_balanced = evaluate_balance(full_code, tokenizer)
@@ -152,6 +156,9 @@ def benchmark_single_checkpoint(checkpoint_path: str, verbose: bool = True) -> D
             print(f"     Prompt:     {prompt}")
             print(f"     Completion: {completion.strip()}\n")
 
+    bench_duration = max(0.001, time.time() - start_bench_time)
+    tokens_per_sec = total_generated_tokens / bench_duration
+
     total = len(BENCHMARK_PROMPTS)
     acc_pct = (passed / total) * 100
     bal_pct = (balanced_count / total) * 100
@@ -160,6 +167,7 @@ def benchmark_single_checkpoint(checkpoint_path: str, verbose: bool = True) -> D
         print("----------------------------------------------------------------------")
         print(f"  Accuracy:  {passed}/{total} ({acc_pct:.1f}%)")
         print(f"  Balance:   {balanced_count}/{total} ({bal_pct:.1f}%)")
+        print(f"  Speed:     {tokens_per_sec:.1f} tokens/sec ({total_generated_tokens} tokens in {bench_duration:.2f}s)")
         print("----------------------------------------------------------------------\n")
 
     return {
@@ -173,6 +181,7 @@ def benchmark_single_checkpoint(checkpoint_path: str, verbose: bool = True) -> D
         "version": f"v{ver}",
         "params": n_params,
         "val_loss": val_loss,
+        "tokens_per_sec": tokens_per_sec,
     }
 
 
@@ -215,15 +224,6 @@ def main():
             except Exception as e:
                 print(f"  [!] Failed to evaluate {exp_dir.name}: {e}")
 
-        # Also check root checkpoints/ if any pt files exist directly
-        for pt_file in sorted(checkpoints_dir.glob("*.pt")):
-            try:
-                res = benchmark_single_checkpoint(str(pt_file), verbose=False)
-                res["exp_name"] = pt_file.stem
-                results.append(res)
-            except Exception as e:
-                print(f"  [!] Failed to evaluate {pt_file.name}: {e}")
-
         if not results:
             print("[!] No valid checkpoints evaluated.")
             return
@@ -263,7 +263,8 @@ def main():
                 f.write(f"- **Parameters**: {res['params']:,}\n")
                 f.write(f"- **Validation Loss**: {res['val_loss']:.4f}\n" if res["val_loss"] != float("inf") else "- **Validation Loss**: N/A\n")
                 f.write(f"- **Completion Accuracy**: {res['acc_pct']:.1f}% ({res['passed']}/{res['total']})\n")
-                f.write(f"- **Structural Syntax Balance**: {res['bal_pct']:.1f}% ({res['balanced']}/{res['total']})\n\n")
+                f.write(f"- **Structural Syntax Balance**: {res['bal_pct']:.1f}% ({res['balanced']}/{res['total']})\n")
+                f.write(f"- **Generation Speed**: {res['tokens_per_sec']:.1f} tokens/sec\n\n")
 
         print(f"\n[OK] Comparison results saved to: {bench_md}")
     else:
